@@ -1,4 +1,4 @@
-// Fork addition: image attachments for the local MCP server.
+// Image attachments for the local MCP server.
 //
 // The in-app Agent only accepts conversation/history/reference-preset IDs.
 // External MCP clients additionally need to bring arbitrary local images

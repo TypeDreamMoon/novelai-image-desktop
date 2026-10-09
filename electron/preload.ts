@@ -78,7 +78,7 @@ contextBridge.exposeInMainWorld("naiDesktop", {
     const listener=(_event:Electron.IpcRendererEvent,filePath:string)=>callback(filePath);
     ipcRenderer.on('image:loadParameters',listener);return ()=>ipcRenderer.removeListener('image:loadParameters',listener);
   },
-  // Fork: local MCP server.
+  // Local MCP server.
   mcpStatus: () => ipcRenderer.invoke('mcp:status'),
   mcpRegenerateToken: () => ipcRenderer.invoke('mcp:regenerateToken'),
   onMcpEvent: (callback:(event:{kind:'history';date?:string;count:number})=>void) => {

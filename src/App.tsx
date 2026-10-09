@@ -5864,7 +5864,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     ["sound", ft("提示音"), "volume"],
     ["appearance", settingsShellText.nav.appearance, "palette"],
     ["performance", settingsShellText.nav.performance, "speed"],
-    ["mcp", "MCP 服务", "plug"],
+    ["mcp", ft("MCP 服务"), "plug"],
     ["about", settingsShellText.nav.about, "info"],
   ];
   const selectedReverseConvertPreset = settings.reverseConvertPromptPresets.find(

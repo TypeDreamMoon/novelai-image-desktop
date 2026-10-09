@@ -1505,7 +1505,7 @@ ipcMain.handle("artistDetective:downloadDirectory", () => detectiveDownloadDirec
   ipcMain.handle("app:installUpdate", () => installUpdate());
 }
 
-// ── Fork: local MCP server ───────────────────────────────────────────────────
+// ── Local MCP server ─────────────────────────────────────────────────────────
 let mcpServer: McpServerHandle | null = null;
 let mcpStatus: { running: boolean; port: number; url: string; error: string } = { running: false, port: 0, url: "", error: "" };
 let mcpChain: Promise<unknown> = Promise.resolve();

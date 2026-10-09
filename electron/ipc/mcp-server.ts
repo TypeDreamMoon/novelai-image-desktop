@@ -1,4 +1,4 @@
-// Fork addition: local Model Context Protocol server.
+// Local Model Context Protocol server.
 //
 // Exposes the Studio's existing Agent tool executor (agent-tools.ts) to
 // external MCP clients such as pi / Claude Code / Codex over Streamable HTTP.
@@ -187,11 +187,24 @@ async function quote(request: AnlasQuoteRequest): Promise<Budget & { ok: boolean
   const limit = budgetLimit();
   if (!result.ok || typeof result.amount !== "number") return { ok: false, amount: Number.NaN, limit, message: result.message };
   let amount = result.amount;
-  // The official request-price route is queried without precise references;
-  // NovelAI charges a flat 5 Anlas per generated image when they are used.
+  const details = [...(result.details ?? [])];
+  // Precise references. The shared estimator charges a flat 5 Anlas per image
+  // (the official request-price route ignores them entirely). On a live Opus
+  // account a single-image V4.5 img2img was billed 5 Anlas with one reference
+  // and 15 with three, so the MCP guard conservatively budgets 5 Anlas per
+  // reference per image. Over-estimating only makes the cap stricter.
   const precise = request.extras?.preciseReferences?.length ?? 0;
-  if (result.source === "official-api" && precise > 0) amount += 5 * Math.max(1, Math.floor(request.batchCount ?? 1));
-  return { ok: true, amount, limit, source: result.source, balance: result.balance, details: result.details, message: result.message };
+  if (precise > 0) {
+    const samples = Math.max(1, Math.floor(request.batchCount ?? 1));
+    const alreadyIncluded = result.source === "official-api" ? 0 : 5 * samples;
+    const extra = Math.max(0, 5 * precise * samples - alreadyIncluded);
+    if (extra > 0) {
+      amount += extra;
+      details.push(`MCP guard: precise references budgeted at 5 Anlas x ${precise} ref(s) x ${samples} image(s) (+${extra}, conservative).`);
+    }
+  }
+  const message = amount === result.amount ? result.message : `Budgeted at ${amount} Anlas for the MCP cap (estimator: ${result.message})`;
+  return { ok: true, amount, limit, source: result.source, balance: result.balance, details, message };
 }
 
 async function enforceBudget(request: AnlasQuoteRequest): Promise<Budget> {
