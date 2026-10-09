@@ -473,6 +473,7 @@ function createTools(options: McpServerOptions): ToolDef[] {
         pasteBack: { type: "boolean", description: "Paste only the mask area back (default true when a mask is given)." },
         growPx: { type: "integer", minimum: 0, maximum: 64, description: "Mask growth before feathering (default 4)." },
         featherPx: { type: "integer", minimum: 0, maximum: 64, description: "Feather width (default 6)." },
+        matchColors: { type: "boolean", description: "Match the generated tone to the source around the mask edge before pasting back (default true)." },
         syncWorkbench: { type: "boolean", description: "Load the result into the Studio workbench UI." },
       }, ["image", "prompt"]),
       annotations: PAID,
@@ -508,11 +509,20 @@ function createTools(options: McpServerOptions): ToolDef[] {
           pasteBack: typeof raw.pasteBack === "boolean" ? raw.pasteBack : undefined,
           growPx: raw.growPx === undefined ? undefined : num(raw.growPx, 4, 0, 64),
           featherPx: raw.featherPx === undefined ? undefined : num(raw.featherPx, 6, 0, 64),
+          matchColors: typeof raw.matchColors === "boolean" ? raw.matchColors : undefined,
         }, { signal: ctx.signal, route: (url) => proxyConfigForUrl("ai", url, settings) });
         const items = output.images.length
           ? await saveOpenAIEditResults(output.images, { prompt, model: editSettings.model, request: output.request, settings, prefix: "mcp-openai-edit" })
           : [];
         const images = items.map((item) => ({ attachmentId: item.id, filePath: item.filePath, width: item.width, height: item.height, model: item.model, date: item.date }));
+        // Keep the full provider output (source geometry, before paste-back) so the agent can re-composite without paying again.
+        const raws = [];
+        for (const buffer of output.raw) {
+          const file = newMcpTempFile(".png");
+          fs.writeFileSync(file, buffer);
+          const attachment = await registerMcpFile(file, "openai-raw");
+          raws.push({ rawId: attachment.id, rawPath: attachment.filePath });
+        }
         if (images.length) notify(options, images, raw.syncWorkbench === true);
         const payload = {
           ok: output.batch.complete,
@@ -522,6 +532,7 @@ function createTools(options: McpServerOptions): ToolDef[] {
           billing: "provider (OpenAI / relay), not Anlas",
           request: output.request,
           images,
+          raw: raws,
         };
         return output.batch.complete ? ok(payload) : { content: [text(payload)], isError: true };
       }),
