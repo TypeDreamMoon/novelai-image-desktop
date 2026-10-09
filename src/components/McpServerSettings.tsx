@@ -94,6 +94,14 @@ export function McpServerSettings({ settings, update }: {
       <p className="settings-hint">
         {ft("每次付费操作执行前都会先估价，超过上限直接拒绝，不会扣点。Opus 免费范围：≤1MP、≤28 步、单张、无精准参考。精准参考按每张参考图 5 Anlas 计入上限（偏保守）。")}
       </p>
+      <div className="toggle-list">
+        <Toggle
+          checked={settings.mcpAllowOpenAIImages === true}
+          onChange={(value) => void update("mcpAllowOpenAIImages", value)}
+          label={ft("允许 OpenAI 图像编辑")}
+          description={ft("允许 MCP 调用 openai_edit。由 OpenAI 或中转服务按其价格计费，不受上面的 Anlas 上限约束。默认关闭。")}
+        />
+      </div>
       <SecretInput label={ft("访问令牌（Bearer Token）")} value={token} readOnly placeholder={ft("启用后自动生成")} />
       <div className="row-actions">
         <Button disabled={!token} onClick={() => void copy(token)}><IconText icon="copy">{ft("复制令牌")}</IconText></Button>

@@ -3239,5 +3239,19 @@
     "The request did not finish. Check your provider's records; nothing was resubmitted.",
     "リクエストが完了しませんでした。プロバイダーの記録を確認してください。自動で再送信はしていません。",
     "요청이 완료되지 않았습니다. 제공자 기록을 확인하세요. 자동으로 다시 제출하지 않았습니다."
+  ],
+  "允许 OpenAI 图像编辑": [
+    "允许 OpenAI 图像编辑",
+    "允許 OpenAI 圖像編輯",
+    "Allow OpenAI image edit",
+    "OpenAI 画像編集を許可",
+    "OpenAI 이미지 편집 허용"
+  ],
+  "允许 MCP 调用 openai_edit。由 OpenAI 或中转服务按其价格计费，不受上面的 Anlas 上限约束。默认关闭。": [
+    "允许 MCP 调用 openai_edit。由 OpenAI 或中转服务按其价格计费，不受上面的 Anlas 上限约束。默认关闭。",
+    "允許 MCP 呼叫 openai_edit。由 OpenAI 或中轉服務按其價格計費，不受上面的 Anlas 上限約束。預設關閉。",
+    "Let MCP clients call openai_edit. Billed by OpenAI or your relay at their prices and not limited by the Anlas cap above. Off by default.",
+    "MCP から openai_edit を呼び出せるようにします。OpenAI または中継サービスの価格で請求され、上の Anlas 上限の対象外です。既定はオフです。",
+    "MCP에서 openai_edit를 호출할 수 있게 합니다. OpenAI 또는 중계 서비스 요금으로 청구되며 위의 Anlas 한도가 적용되지 않습니다. 기본값은 꺼짐입니다."
   ]
 }

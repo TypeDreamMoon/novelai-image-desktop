@@ -210,6 +210,7 @@ export function defaultSettings(): AppSettings {
     mcpServerPort: 39280,
     mcpServerToken: "",
     mcpMaxAnlasPerCall: 0,
+    mcpAllowOpenAIImages: false,
     showFloatingToolbar: true,
     historyJumpAfterGenerate: true,
     historyRetentionDays: 30,

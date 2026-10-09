@@ -31,6 +31,10 @@ import { agentGenerationInput, executeAgentTool } from "./agent-tools";
 import { quoteAnlasCost, refreshStoredAccount } from "./nai";
 import { getHistory, getSettings } from "./store";
 import { importMcpImage, looksLikeLocalPath, mcpAttachment, newMcpTempFile, registerMcpFile } from "./mcp-attachments";
+import { runOpenAIImageEdit } from "./openai-image-edit";
+import { openAIImageEditConfig, saveOpenAIEditResults } from "./openai-image-edit-workbench";
+import { proxyConfigForUrl } from "./proxy";
+import { normalizeOpenAIImageEditSettings, OPENAI_EDIT_FIDELITIES, OPENAI_EDIT_QUALITIES, type OpenAIImageEditSettings } from "../../src/openai-image-edit";
 
 export interface McpServerHandle {
   port: number;
@@ -354,6 +358,13 @@ function createTools(options: McpServerOptions): ToolDef[] {
             stale: account.stale,
           },
           mcp: { maxAnlasPerCall: budgetLimit(), version: APP_VERSION },
+          openaiImageEdit: (() => {
+            const settings = getSettings();
+            const { edit, configured } = openAIImageEditConfig(settings);
+            let endpointHost = "";
+            try { endpointHost = new URL(edit.baseUrl).host; } catch { /* invalid URL */ }
+            return { allowedForMcp: settings.mcpAllowOpenAIImages === true, configured, model: edit.model, endpointHost, size: edit.size, quality: edit.quality };
+          })(),
         });
       },
     },
@@ -445,6 +456,75 @@ function createTools(options: McpServerOptions): ToolDef[] {
         const tool = str(raw.tool) as DirectorTool;
         return imageOperation("langbai_director", { ...raw, attachmentId: image.id, tool }, { feature: "director", directorTool: tool }, ctx, false);
       },
+    },
+    {
+      name: "openai_edit",
+      title: "OpenAI image edit (inpaint)",
+      description: "Edit / inpaint with the OpenAI Images edits API (official or relay configured in Studio Settings → API → OpenAI image edit). Strong at lettering, logos and natural-language local changes. `mask` uses the make_mask format (opaque = repaint); only the grown, feathered mask area is pasted back, so pixels outside the mask stay identical. Optional referenceImages (e.g. character sheets) are sent as extra images. Billed by the provider (not Anlas); refused unless the user allowed it in Settings → MCP server.",
+      inputSchema: schema({
+        image: IMAGE_REF,
+        mask: { ...IMAGE_REF, description: "Mask (opaque/white = repaint), e.g. from make_mask. Omit for a whole-image edit." },
+        prompt: { type: "string", description: "Natural-language instruction describing what the masked area should become." },
+        referenceImages: { type: "array", maxItems: 15, items: IMAGE_REF, description: "Extra images sent after the source, e.g. character sheets." },
+        model: { type: "string", description: "Override the configured model (default gpt-image-2.5-sunburst)." },
+        quality: { type: "string", enum: [...OPENAI_EDIT_QUALITIES] },
+        inputFidelity: { type: "string", enum: [...OPENAI_EDIT_FIDELITIES], description: "\"\" = not sent." },
+        size: { type: "string", description: "\"fit\" (pad to the closest standard size; default), \"auto\", or WIDTHxHEIGHT." },
+        pasteBack: { type: "boolean", description: "Paste only the mask area back (default true when a mask is given)." },
+        growPx: { type: "integer", minimum: 0, maximum: 64, description: "Mask growth before feathering (default 4)." },
+        featherPx: { type: "integer", minimum: 0, maximum: 64, description: "Feather width (default 6)." },
+        syncWorkbench: { type: "boolean", description: "Load the result into the Studio workbench UI." },
+      }, ["image", "prompt"]),
+      annotations: PAID,
+      run: async (raw, ctx) => serializedPaid(async () => {
+        ctx.signal.throwIfAborted();
+        const settings = getSettings();
+        if (settings.mcpAllowOpenAIImages !== true) {
+          throw new Error("用户未允许 MCP 调用 OpenAI 图像编辑（由服务商计费）。请让用户在「设置 → MCP 服务」打开“允许 OpenAI 图像编辑”。");
+        }
+        const { edit, apiKey, configured } = openAIImageEditConfig(settings);
+        if (!configured) throw new Error("OpenAI 图像编辑尚未配置：请让用户在「设置 → API 配置 → OpenAI 图像编辑」填写接口地址、模型和密钥。");
+        const prompt = str(raw.prompt);
+        if (!prompt) throw new Error("缺少 prompt（重绘指令）。");
+        const image = await resolveImage(raw.image);
+        const mask = raw.mask === undefined ? null : await resolveImage(raw.mask, "mask");
+        const references = Array.isArray(raw.referenceImages)
+          ? await Promise.all(raw.referenceImages.slice(0, 15).map((value) => resolveImage(value, "referenceImages[]")))
+          : [];
+        const overrides: Partial<OpenAIImageEditSettings> = {};
+        if (str(raw.model)) overrides.model = str(raw.model);
+        if (raw.quality !== undefined) overrides.quality = raw.quality as OpenAIImageEditSettings["quality"];
+        if (raw.inputFidelity !== undefined) overrides.inputFidelity = raw.inputFidelity as OpenAIImageEditSettings["inputFidelity"];
+        if (str(raw.size)) overrides.size = str(raw.size);
+        const editSettings = normalizeOpenAIImageEditSettings({ ...edit, ...overrides });
+        ctx.progress(`正在请求 OpenAI 图像编辑（${editSettings.model}）…`);
+        const output = await runOpenAIImageEdit({
+          source: fs.readFileSync(image.filePath),
+          mask: mask ? fs.readFileSync(mask.filePath) : null,
+          prompt,
+          references: references.map((item) => fs.readFileSync(item.filePath)),
+          settings: editSettings,
+          apiKey,
+          pasteBack: typeof raw.pasteBack === "boolean" ? raw.pasteBack : undefined,
+          growPx: raw.growPx === undefined ? undefined : num(raw.growPx, 4, 0, 64),
+          featherPx: raw.featherPx === undefined ? undefined : num(raw.featherPx, 6, 0, 64),
+        }, { signal: ctx.signal, route: (url) => proxyConfigForUrl("ai", url, settings) });
+        const items = output.images.length
+          ? await saveOpenAIEditResults(output.images, { prompt, model: editSettings.model, request: output.request, settings, prefix: "mcp-openai-edit" })
+          : [];
+        const images = items.map((item) => ({ attachmentId: item.id, filePath: item.filePath, width: item.width, height: item.height, model: item.model, date: item.date }));
+        if (images.length) notify(options, images, raw.syncWorkbench === true);
+        const payload = {
+          ok: output.batch.complete,
+          message: output.batch.complete
+            ? `OpenAI 图像编辑完成，已保存 ${images.length} 张。`
+            : `${output.batch.cancelled ? "请求已停止。" : output.batch.error?.message ?? "图像编辑未完成。"} 没有自动重新提交。`,
+          billing: "provider (OpenAI / relay), not Anlas",
+          request: output.request,
+          images,
+        };
+        return output.batch.complete ? ok(payload) : { content: [text(payload)], isError: true };
+      }),
     },
     {
       name: "estimate_cost",
@@ -647,6 +727,7 @@ const INSTRUCTIONS = [
   "Every image argument accepts an absolute local path, so reference sheets can be used directly.",
   "V5 has no precise reference / vibe transfer: for face fidelity, compose with V5 then img2img with model nai-diffusion-4-5-full + preciseReferences (strength ~0.5).",
   "Inpaint ignores characterPrompts; describe the masked subject in positivePrompt. Use make_mask + view_image(previewPath) first.",
+  "For lettering, logos or natural-language local edits use openai_edit (OpenAI Images edits, provider-billed, needs the user's opt-in; see get_state.openaiImageEdit). It pastes back only the mask area.",
   "Paid calls are refused when the Anlas estimate exceeds the user's per-call limit; check with estimate_cost. Never retry a paid call blindly — inspect list_history first.",
 ].join("\n");
 

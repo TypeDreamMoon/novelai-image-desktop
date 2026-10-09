@@ -1482,6 +1482,8 @@ export interface AppSettings {
   mcpServerToken?: string;
   /** Highest estimated Anlas cost a single MCP tool call may spend. 0 = only free operations. */
   mcpMaxAnlasPerCall?: number;
+  /** Let MCP clients call the provider-billed OpenAI image edit. */
+  mcpAllowOpenAIImages?: boolean;
   showFloatingToolbar: boolean;
   historyJumpAfterGenerate: boolean;
   historyRetentionDays: number;
